@@ -52,6 +52,9 @@ class PredictionLog(Base):
     actual_booster = Column(Integer, nullable=True)
     hits           = Column(Integer, nullable=True) # 0–6 matches
     booster_hit    = Column(Integer, default=0)     # 1 if booster matched
+    #Pairing hits (for pattern engine analysis)
+    predicted_pairs = Column(JSON, nullable=True)   # The 20 predicted pairs
+    pair_hits       = Column(JSON, nullable=True)   # Results after scoring
 
     def __repr__(self):
         return (

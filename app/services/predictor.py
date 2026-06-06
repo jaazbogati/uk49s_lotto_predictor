@@ -18,6 +18,7 @@ Honesty contract:
 
 import pandas as pd
 import numpy as np
+from app.services.pattern_engine import get_top_pairs
 from app.services.frequency_engine import (
     load_draws,
     compute_frequency_score,
@@ -27,6 +28,7 @@ from app.services.frequency_engine import (
 from app.services.bayesian_engine  import get_bayesian_report
 from app.services.monte_carlo      import get_monte_carlo_report
 from app.services.genetic_algorithm import evolve
+from app.services.ml_engine import predict_with_ml
 
 # ── Scoring Weights ───────────────────────────────────────────
 # How much each engine contributes to the final ticket score.
@@ -35,6 +37,7 @@ from app.services.genetic_algorithm import evolve
 W_FREQUENCY = 0.35   # Historical frequency (Phase 2)
 W_BAYESIAN  = 0.35   # Bayesian posterior   (Phase 4a)
 W_GA        = 0.30   # GA fitness score     (Phase 5)
+W_ML        = 0.00   # ML probability       (Phase 6)
 
 # ── Number-Level Scoring ──────────────────────────────────────
 
@@ -180,10 +183,26 @@ def generate_predictions(
     ]
     scored.sort(key=lambda x: x["overall_score"], reverse=True)
 
-    # Top N numbers by combined score for reference
+    # ── ML layer ──────────────────────────────────────────────
+    # Get ML probability estimates — blends with existing scores
+    ml_predictions = predict_with_ml(draw_type)
+    ml_map = {}
+    if not ml_predictions.empty:
+        ml_map = dict(zip(
+            ml_predictions["number"],
+            ml_predictions["ml_probability"]
+        ))
+
+    # Add ML scores to top_numbers
     top_numbers = num_scores.head(15)[
         ["number", "combined_score", "status", "overdue_score"]
     ].to_dict("records")
+
+    # Enrich with ML probability
+    for row in top_numbers:
+        row["ml_probability"] = round(
+            float(ml_map.get(row["number"], 0)), 6
+        )
 
     return {
         "draw_type":      label,
@@ -192,6 +211,8 @@ def generate_predictions(
         "ga_ticket":      ga_ticket,
         "ga_fitness":     ga_fitness,
         "ga_breakdown":   ga_result["breakdown"],
+        "top_pairs":      get_top_pairs(draw_type, n=20),
+        "ml_available":   not ml_predictions.empty, 
         "phase3_reminder": {
             "chi_square_p":       "0.6689 (Lunchtime) / 0.1975 (Teatime)",
             "hot_number_p":       "0.772  — NO predictive power",

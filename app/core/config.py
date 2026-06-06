@@ -12,7 +12,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 DATABASE_URL = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}?sslmode=disable"
 )
 
 #App

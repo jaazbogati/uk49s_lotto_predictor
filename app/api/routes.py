@@ -14,8 +14,52 @@ from fastapi  import APIRouter, HTTPException, BackgroundTasks
 from typing   import Optional
 from app.core.database import SessionLocal
 from app.models.draw_model import Draw
+from app.models.prediction_log import PredictionLog, PredictionStatus
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import date as DateType
+
 
 router = APIRouter()
+
+# ── Log Predictions ───────────────────────────────────────────
+class TicketSuggestion(BaseModel):
+    ticket:        List[int]
+    overall_score: float
+    odd_even:      str
+    high_low:      str
+
+class LogRequest(BaseModel):
+    draw_type:       str
+    draw_date:       DateType
+    suggestions:     List[TicketSuggestion]
+    ga_fitness:      Optional[float] = None
+    predicted_pairs: Optional[List] = None
+
+@router.post("/log-predictions")
+def log_predictions_endpoint(body: LogRequest):
+    """
+    Saves predictions from the React frontend to the prediction log.
+    Same function used by Streamlit — one source of truth.
+    """
+    draw = validate_draw_type(body.draw_type)
+    try:
+        from app.services.outcome_tracker import log_predictions
+        logged = log_predictions(
+            draw_type       = draw,
+            draw_date       = body.draw_date,
+            suggestions     = [s.dict() for s in body.suggestions],
+            ga_fitness      = body.ga_fitness,
+            predicted_pairs = body.predicted_pairs
+        )
+        return {
+            "logged":    logged,
+            "draw_type": draw,
+            "draw_date": str(body.draw_date),
+            "message":   f"Saved {logged} predictions for {draw} on {body.draw_date}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── Helper ────────────────────────────────────────────────────
 
@@ -230,7 +274,108 @@ def track_record(draw_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── GET /logged-predictions/{draw_type} ───────────────────────
+# Returns ALL logged predictions (pending + scored + missed)
+# with optional status filter. Used by the "All Logged" tab.
 
+@router.get("/logged-predictions/{draw_type}")
+def get_logged_predictions(draw_type: str, status: str = None):
+    """
+    Returns all logged predictions for a draw type.
+    Optional ?status=pending|scored|missed filter.
+    """
+    draw = validate_draw_type(draw_type)
+    db   = SessionLocal()
+
+    try:
+        query = db.query(PredictionLog).filter(
+            PredictionLog.draw_type == draw
+        )
+
+        if status and status != 'all':
+            status_map = {
+                'pending': PredictionStatus.PENDING,
+                'scored':  PredictionStatus.SCORED,
+                'missed':  PredictionStatus.MISSED,
+            }
+            if status in status_map:
+                query = query.filter(
+                    PredictionLog.status == status_map[status]
+                )
+
+        rows = query.order_by(PredictionLog.draw_date.desc()).all()
+
+    finally:
+        db.close()
+
+    predictions = [
+        {
+            "id":            r.id,
+            "draw_date":     str(r.draw_date),
+            "draw_type":     r.draw_type,
+            "ticket":        r.ticket,
+            "overall_score": r.overall_score,
+            "ga_fitness":    r.ga_fitness,
+            "status":        r.status.value,
+            "hits":          r.hits,
+            "booster_hit":   r.booster_hit,
+            "actual_numbers":r.actual_numbers,
+            "pair_hits":     r.pair_hits,
+            "predicted_pairs": r.predicted_pairs,
+            "has_pairs":     bool(r.predicted_pairs),
+        }
+        for r in rows
+    ]
+
+    return {
+        "draw_type":     draw,
+        "total":         len(predictions),
+        "pending_count": sum(1 for p in predictions if p["status"] == "pending"),
+        "scored_count":  sum(1 for p in predictions if p["status"] == "scored"),
+        "missed_count":  sum(1 for p in predictions if p["status"] == "missed"),
+        "predictions":   predictions,
+    }
+
+
+# ── DELETE /logged-predictions/{id} ──────────────────────────
+# Deletes a single prediction log entry by ID.
+# Used by the delete button in the "All Logged" tab.
+
+@router.delete("/logged-predictions/{prediction_id}")
+def delete_logged_prediction(prediction_id: int):
+    """
+    Deletes a single prediction log entry by ID.
+    Used from the React UI management panel.
+    """
+    db = SessionLocal()
+    try:
+        row = db.query(PredictionLog).filter(
+            PredictionLog.id == prediction_id
+        ).first()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Prediction {prediction_id} not found"
+            )
+
+        db.delete(row)
+        db.commit()
+        return {
+            "deleted":    True,
+            "id":         prediction_id,
+            "draw_type":  row.draw_type,
+            "draw_date":  str(row.draw_date),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+        
 # ── Score Pending ─────────────────────────────────────────────
 
 @router.post("/score-pending")
@@ -245,3 +390,32 @@ def score_pending(background_tasks: BackgroundTasks):
         return {"status": "started", "message": "Scoring pending predictions in background."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/ml/{draw_type}")
+def ml_predictions(draw_type: str):
+    """
+    Returns ML probability estimates per number.
+    Trains model on first call if not already trained.
+    """
+    draw = validate_draw_type(draw_type)
+    try:
+        from app.services.ml_engine import get_ml_report
+        return get_ml_report(draw)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ml/{draw_type}/train")
+def train_ml(draw_type: str, background_tasks: BackgroundTasks):
+    """
+    Triggers ML model training in the background.
+    Takes 2-3 minutes. Check /ml/{draw_type} when done.
+    """
+    draw = validate_draw_type(draw_type)
+    try:
+        from app.services.ml_engine import train_model
+        background_tasks.add_task(train_model, draw, False)
+        return {"status": "training_started", "draw_type": draw}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+

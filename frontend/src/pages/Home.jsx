@@ -1,11 +1,30 @@
+import { useState } from 'react'                    // ← add useState
 import { Link } from 'react-router-dom'
 import { useLatest } from '../hooks/useDrawData'
 import LoadingSpinner from '../components/LoadingSpinner'
 import StatBadge from '../components/StatBadge'
 import NumberBall from '../components/NumberBall'
+import axios from 'axios'
 
 export default function Home() {
+
+  // ── All hooks together at the top ─────────────────────────
   const { data, isLoading, error } = useLatest(10)
+  const [scraping,  setScraping]  = useState(false)
+  const [scrapeMsg, setScrapeMsg] = useState(null)
+
+  // ── Handlers ───────────────────────────────────────────────
+  const handleScrape = async () => {
+    setScraping(true)
+    setScrapeMsg(null)
+    try {
+      await axios.post('/api/v1/scrape')
+      setScrapeMsg('✅ Scraping started in background — refresh in 2 minutes')
+    } catch (e) {
+      setScrapeMsg('❌ Scrape failed — check API is running')
+    }
+    setScraping(false)
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
@@ -35,11 +54,27 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Scrape trigger */}
+      <div className="flex items-center gap-3 mb-8">
+        <button
+          onClick={handleScrape}
+          disabled={scraping}
+          className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800
+                     text-white px-4 py-2 rounded-xl text-sm
+                     transition-colors flex items-center gap-2"
+        >
+          {scraping ? '⏳ Starting...' : '🔄 Fetch Latest Results'}
+        </button>
+        {scrapeMsg && (
+          <span className="text-sm text-slate-400">{scrapeMsg}</span>
+        )}
+      </div>
+
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-        <StatBadge label="Total Draws"     value="4,471+"  sub="since 2020" />
-        <StatBadge label="Draw Types"      value="2"       sub="Lunchtime + Teatime" />
-        <StatBadge label="Possible Combos" value="13.9M"   sub="1 in 13,983,816" />
+        <StatBadge label="Total Draws"     value="4,471+"   sub="since 2020" />
+        <StatBadge label="Draw Types"      value="2"        sub="Lunchtime + Teatime" />
+        <StatBadge label="Possible Combos" value="13.9M"    sub="1 in 13,983,816" />
         <StatBadge label="Randomness"      value="✅ Proven" sub="p > 0.05" />
       </div>
 
@@ -50,7 +85,7 @@ export default function Home() {
         </h2>
 
         {isLoading && <LoadingSpinner message="Loading recent draws..." />}
-        {error    && <p className="text-red-400">Failed to load draws.</p>}
+        {error     && <p className="text-red-400">Failed to load draws.</p>}
 
         {data && (
           <div className="flex flex-col gap-4">
@@ -64,7 +99,7 @@ export default function Home() {
                   <span className="text-slate-400 text-sm">
                     {new Date(draw.date).toLocaleDateString('en-GB', {
                       weekday: 'short', day: 'numeric',
-                      month: 'short', year: 'numeric'
+                      month:   'short', year: 'numeric'
                     })}
                   </span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
@@ -81,8 +116,11 @@ export default function Home() {
                     <NumberBall key={n} number={n} size="sm" />
                   ))}
                   <span className="text-slate-500 text-xs mx-1">+</span>
-                  <NumberBall number={draw.booster} size="sm"
-                    status="➖ Neutral" />
+                  <NumberBall
+                    number={draw.booster}
+                    size="sm"
+                    status="➖ Neutral"
+                  />
                   <span className="text-slate-500 text-xs ml-1">(B)</span>
                 </div>
               </div>
