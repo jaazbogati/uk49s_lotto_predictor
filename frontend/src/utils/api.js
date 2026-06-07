@@ -10,7 +10,7 @@ export const getLatest        = (n=20)  => api.get(`/latest?limit=${n}`)
 export const getStats         = (draw)  => api.get(`/stats/${draw}`)
 export const getNumbers       = (draw)  => api.get(`/numbers/${draw}`)
 export const getAnalysis      = (draw)  => api.get(`/analysis/${draw}`)
-export const getPredictions   = (draw, n=5) => api.get(`/predictions/${draw}?n_tickets=${n}`)
+export const getPredictions = (draw, n = 5, strategy = "default") => api.get(`/predictions/${draw}?n_tickets=${n}&strategy=${strategy}`)
 export const logPredictions   = (body) => api.post('/log-predictions', body)
 
 export default api

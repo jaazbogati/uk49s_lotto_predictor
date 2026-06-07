@@ -152,6 +152,7 @@ export default function DrawPage() {
 
   const [runPrediction,   setRunPrediction]   = useState(false)
   const [nTickets,        setNTickets]        = useState(5)
+  const [strategy,        setStrategy]        = useState("default")
   const [showPairs,       setShowPairs]       = useState(false)
   const [showPairRecord,  setShowPairRecord]  = useState(false)
 
@@ -165,7 +166,7 @@ export default function DrawPage() {
     data:      predictions,
     isLoading: predLoading,
     refetch:   rerunPrediction
-  } = usePredictions(drawType, runPrediction, nTickets)
+  } = usePredictions(drawType, runPrediction, nTickets, strategy)
 
   const {
     mutate:    saveLog,
@@ -180,6 +181,7 @@ export default function DrawPage() {
       prevDrawType.current = drawType
       setRunPrediction(false)
       setNTickets(5)
+      setStrategy("default")
       setShowPairs(false)
       setShowPairRecord(false)
       const d = new Date()
@@ -324,6 +326,7 @@ export default function DrawPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/*Ticket count selector*/}
             <select
               value={nTickets}
               onChange={e => setNTickets(Number(e.target.value))}
@@ -334,6 +337,41 @@ export default function DrawPage() {
                 <option key={n} value={n}>{n} tickets</option>
               ))}
             </select>
+
+            {/*Strategy selector*/}
+            <select
+              value={strategy}
+              onChange={e => setStrategy(e.target.value)}
+              className="bg-slate-700 text-white rounded-lg px-3 py-2
+                         text-sm border border-slate-600"
+            >
+              <option value="default">🎯 Default</option>
+              <option value="diverse">🔀 Diverse</option>
+              <option value="wheel">⚙️ Wheel</option>
+            </select>
+
+            {/*Strategy tooltips*/}
+            <div className="relative group">
+              <span className="text-slate-500 text-xs cursor-help border border-slate-600
+                              rounded-full w-5 h-5 flex items-center justify-center">?</span>
+              <div className="absolute right-0 top-6 w-64 bg-slate-700 border border-slate-600
+                              rounded-xl p-3 text-xs text-slate-300 hidden group-hover:block
+                              z-10 shadow-xl">
+                <p className="font-semibold text-white mb-1">Strategy modes:</p>
+                <p className="mb-1">
+                  <strong className="text-blue-400">Default</strong> — MC + GA pipeline,
+                  tickets scored independently.
+                </p>
+                <p className="mb-1">
+                  <strong className="text-green-400">Diverse</strong> — Same pipeline,
+                  max 2 numbers shared between any two tickets. Wider coverage.
+                </p>
+                <p>
+                  <strong className="text-amber-400">Wheel</strong> — Combinatorial wheel
+                  from top-15 numbers. Guarantees a pair hit if 2+ pool numbers are drawn.
+                </p>
+              </div>
+            </div>
 
             <button
               onClick={handleGenerate}
@@ -364,6 +402,42 @@ export default function DrawPage() {
                 ))}
               </div>
             </div>
+
+            {predictions?.strategy_info && (
+              <div className={`mt-4 rounded-xl p-4 border text-xs ${
+                predictions.strategy === "wheel"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  : predictions.strategy === "diverse"
+                  ? "bg-green-500/10 border-green-500/30 text-green-300"
+                  : "bg-slate-700/40 border-slate-600 text-slate-400"
+              }`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-base">
+                    {predictions.strategy === "wheel"   ? "⚙️" :
+                    predictions.strategy === "diverse" ? "🔀" : "🎯"}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white mb-0.5">
+                      {predictions.strategy === "wheel"   ? "Wheel Strategy" :
+                      predictions.strategy === "diverse" ? "Diverse Strategy" :
+                      "Default Strategy"}
+                    </p>
+                    {predictions.strategy === "wheel" && (
+                      <>
+                        <p>{predictions.strategy_info.guarantee}</p>
+                        <p className="mt-1 text-slate-400">
+                          Pool: {predictions.strategy_info.pool_numbers?.join(", ")} &nbsp;|&nbsp;
+                          Pair coverage: {predictions.strategy_info.coverage_pct}%
+                        </p>
+                      </>
+                    )}
+                    {predictions.strategy !== "wheel" && (
+                      <p>{predictions.strategy_info.overlap_note}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pair analysis — toggle-controlled, hidden by default */}
             {pairCount > 0 && (

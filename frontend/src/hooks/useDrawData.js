@@ -35,12 +35,18 @@ export function useNumbers(drawType) {
   })
 }
 
-export function usePredictions(drawType, enabled = false, nTickets = 5) {
+export function usePredictions(
+  drawType,
+  enabled  = false,
+  nTickets = 5,
+  strategy = "default"   // "default" | "diverse" | "wheel"
+) {
   return useQuery({
-    queryKey:  ['predictions', drawType, nTickets],
-    queryFn:   () => getPredictions(drawType, nTickets).then(r => r.data),
-    enabled:   enabled && !!drawType,   // Only runs when user clicks Generate
-    staleTime: 0,                       // Always fresh — GA is random each run
+    queryKey: ['predictions', drawType, nTickets, strategy],  // strategy in key
+    queryFn:  () =>
+      getPredictions(drawType, nTickets, strategy).then(r => r.data),
+    enabled:   enabled && !!drawType,
+    staleTime: 0,
     retry:     1,
   })
 }

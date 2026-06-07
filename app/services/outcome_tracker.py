@@ -124,7 +124,7 @@ def score_pending_predictions() -> dict:
         pending = db.query(PredictionLog).filter(
             and_(
                 PredictionLog.status    == PredictionStatus.PENDING,
-                PredictionLog.draw_date <=  today
+                PredictionLog.draw_date <  today
             )
         ).order_by(PredictionLog.draw_date, PredictionLog.draw_type, PredictionLog.id).all()
 

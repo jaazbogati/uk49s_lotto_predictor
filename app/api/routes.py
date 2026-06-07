@@ -192,25 +192,33 @@ def number_scores(draw_type: str, limit: int = 49):
 # ── Predictions ───────────────────────────────────────────────
 
 @router.get("/predictions/{draw_type}")
-def predictions(draw_type: str, n_tickets: int = 5):
+def predictions(
+    draw_type: str,
+    n_tickets: int = 5,
+    strategy:  str = "default"   # "default" | "diverse" | "wheel"
+):
     """
-    Runs the full Phase 6 prediction pipeline and returns
-    top ticket suggestions for the requested draw type.
+    Runs the full Phase 6 prediction pipeline.
 
-    This endpoint takes ~60 seconds because it runs:
-      - Monte Carlo (50k simulations)
-      - Genetic Algorithm (100 generations)
-      - Candidate scoring
-
-    In Phase 10 we'll add caching so results are pre-computed.
+    strategy options:
+      default — original MC + GA pipeline
+      diverse — same pipeline, diversity-filtered (max 2 overlap)
+      wheel   — abbreviated combinatorial wheel from top-15 pool
     """
     draw = validate_draw_type(draw_type)
+    if strategy not in ("default", "diverse", "wheel"):
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=422,
+            detail=f"strategy must be 'default', 'diverse', or 'wheel'"
+        )
     try:
         from app.services.predictor import generate_predictions
         return generate_predictions(
             draw_type = draw,
             n_tickets = n_tickets,
-            verbose   = False
+            verbose   = False,
+            strategy  = strategy
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

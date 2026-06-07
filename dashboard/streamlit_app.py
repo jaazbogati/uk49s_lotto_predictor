@@ -428,31 +428,112 @@ elif page == "🎯 Predictions":
         "random selection**. Use for entertainment only."
     )
 
-    n_tickets = st.slider("Number of ticket suggestions", 3, 10, 5)
+    # ── Patch for streamlit_app.py — Page 4: Predictions ──────────
+    # Replace the existing n_tickets slider and Generate button
+    # block with this. Everything else on the page stays the same.
 
+    # ── Strategy selector + ticket count ──────────────────────────
+    col_tickets, col_strategy = st.columns([1, 2])
+
+    with col_tickets:
+        n_tickets = st.slider("Number of ticket suggestions", 3, 10, 5)
+
+    with col_strategy:
+        strategy = st.radio(
+            "Strategy",
+            options  = ["default", "diverse", "wheel"],
+            index    = 0,
+            horizontal = True,
+            format_func = lambda s: {
+                "default": "🎯 Default",
+                "diverse": "🔀 Diverse",
+                "wheel":   "⚙️ Wheel"
+            }[s]
+        )
+
+    # Strategy description
+    strategy_descriptions = {
+        "default": (
+            "**🎯 Default** — MC + GA pipeline. Tickets scored independently. "
+            "High-scoring numbers may repeat across tickets."
+        ),
+        "diverse": (
+            "**🔀 Diverse** — Same MC + GA pipeline but with a diversity filter. "
+            "Max 2 numbers shared between any two tickets. "
+            "Wider number coverage across all tickets."
+        ),
+        "wheel": (
+            "**⚙️ Wheel** — Abbreviated combinatorial wheel built from the "
+            "top-15 scoring numbers. Maximises pair coverage — "
+            "guarantees a pair hit if 2+ pool numbers are drawn. "
+            "GA not used in this mode."
+        ),
+    }
+    st.caption(strategy_descriptions[strategy])
+
+    # ── Session state ──────────────────────────────────────────────
     if "prediction_result"    not in st.session_state:
         st.session_state.prediction_result    = None
     if "prediction_draw_type" not in st.session_state:
         st.session_state.prediction_draw_type = None
+    if "prediction_strategy"  not in st.session_state:
+        st.session_state.prediction_strategy  = "default"
     if "logged"               not in st.session_state:
         st.session_state.logged               = False
 
     if st.button("🚀 Generate Predictions", type="primary"):
-        with st.spinner(
-            "Running full pipeline: Monte Carlo → Genetic Algorithm → Scoring... (~60s)"
-        ):
+        spinner_msg = {
+            "default": "Running MC → GA → Scoring... (~60s)",
+            "diverse": "Running MC → GA → Diversity filter... (~60s)",
+            "wheel":   "Building combinatorial wheel from top-15 numbers... (~30s)",
+        }[strategy]
+
+        with st.spinner(spinner_msg):
             result = generate_predictions(
                 draw_type = draw_type,
                 n_tickets = n_tickets,
-                verbose   = False
+                verbose   = False,
+                strategy  = strategy
             )
         st.session_state.prediction_result    = result
         st.session_state.prediction_draw_type = draw_type
+        st.session_state.prediction_strategy  = strategy
         st.session_state.logged               = False
 
     result = st.session_state.prediction_result
 
     if result is not None:
+
+        # ── Strategy info banner ───────────────────────────────────
+        used_strategy = result.get("strategy", "default")
+        sinfo         = result.get("strategy_info", {})
+
+        if used_strategy == "wheel":
+            st.info(
+                f"⚙️ **Wheel Strategy** — "
+                f"{sinfo.get('guarantee', '')}  \n"
+                f"Pool: `{sinfo.get('pool_numbers', [])}`  \n"
+                f"Pair coverage: **{sinfo.get('coverage_pct', 0)}%** "
+                f"of all pairs within top-{sinfo.get('pool_size', 15)} numbers."
+            )
+        elif used_strategy == "diverse":
+            st.info(
+                f"🔀 **Diverse Strategy** — "
+                f"{sinfo.get('overlap_note', '')}  \n"
+                f"**{sinfo.get('unique_numbers', 0)} unique numbers** "
+                f"across {n_tickets} tickets."
+            )
+        else:
+            st.info(
+                f"🎯 **Default Strategy** — "
+                f"{sinfo.get('overlap_note', '')}  \n"
+                f"**{sinfo.get('unique_numbers', 0)} unique numbers** "
+                f"across {n_tickets} tickets."
+            )
+
+        # ── Rest of the predictions display continues unchanged ────
+        # (top numbers chart, ML chart, ticket expanders, GA ticket,
+        #  pairs, reality check, logging section — all unchanged)
         st.markdown("---")
         st.subheader("📊 Top Numbers by Combined Score")
         num_df = pd.DataFrame(result["top_numbers"])
